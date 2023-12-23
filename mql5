@@ -1,0 +1,147 @@
+mql5
+//+------------------------------------------------------------------+
+//|                                                   Trailing on Last Top Bottom |
+//|                                                 forexroboteasy.com |
+//|                                         Developed by Forex Robot Easy Team |
+//+------------------------------------------------------------------+
+
+// Define input parameters
+input int Timeframe = PERIOD_H1;
+input double TrailingStop = 50;
+input double LotSize = 0.01;
+
+// Define global variables
+double lastTop = 0;
+double lastBottom = 0;
+int lastTopBar = 0;
+int lastBottomBar = 0;
+bool isBuyOrder = false;
+bool isSellOrder = false;
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+void OnInit()
+{
+   // Set indicator buffers
+   SetIndexBuffer(0, lastTop);
+   SetIndexBuffer(1, lastBottom);
+   // Set indicator label
+   SetIndexLabel(0, 'Last Top');
+   SetIndexLabel(1, 'Last Bottom');
+   // Set empty values for indicator buffers
+   ArrayInitialize(lastTop, 0);
+   ArrayInitialize(lastBottom, 0);
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[])
+{
+   int limit = rates_total - prev_calculated;
+   
+   // Calculate last top and last bottom values
+   for(int i = limit; i >= 0; i--)
+   {
+      if(high[i] > lastTop)
+      {
+         lastTop = high[i];
+         lastTopBar = i;
+      }
+      
+      if(low[i] < lastBottom || lastBottom == 0)
+      {
+         lastBottom = low[i];
+         lastBottomBar = i;
+      }
+   }
+   
+   // Check for buy order trigger
+   if(isSellOrder && low[lastTopBar] >= lastBottom + TrailingStop * Point)
+   {
+      CloseSellOrder();
+   }
+   
+   // Check for sell order trigger
+   if(isBuyOrder && high[lastBottomBar] <= lastTop - TrailingStop * Point)
+   {
+      CloseBuyOrder();
+   }
+   
+   return rates_total;
+}
+
+//+------------------------------------------------------------------+
+//| Open buy order function                                           |
+//+------------------------------------------------------------------+
+void OpenBuyOrder()
+{
+   if(!isBuyOrder)
+   {
+      double sl = lastBottom - TrailingStop * Point;
+      double tp = lastTop + TrailingStop * Point;
+      int ticket = OrderSend(Symbol(), OP_BUY, LotSize, Ask, 0, sl, tp, 'Trailing on Last Top Bottom');
+      
+      if(ticket > 0)
+      {
+         isBuyOrder = true;
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Open sell order function                                          |
+//+------------------------------------------------------------------+
+void OpenSellOrder()
+{
+   if(!isSellOrder)
+   {
+      double sl = lastTop + TrailingStop * Point;
+      double tp = lastBottom - TrailingStop * Point;
+      int ticket = OrderSend(Symbol(), OP_SELL, LotSize, Bid, 0, sl, tp, 'Trailing on Last Top Bottom');
+      
+      if(ticket > 0)
+      {
+         isSellOrder = true;
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Close buy order function                                          |
+//+------------------------------------------------------------------+
+void CloseBuyOrder()
+{
+   if(isBuyOrder)
+   {
+      for(int i = OrdersTotal() - 1; i >= 0; i--)
+      {
+         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderType() == OP_BUY)
+         {
+            OrderClose(OrderTicket(), OrderLots(), Bid, 0, clrRed);
+            isBuyOrder = false;
+            break;
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Close sell order function                                         |
+//+------------------------------------------------------------------+
+void CloseSellOrder()
+{
+   if(isSellOrder)
+   {
+      for(int i = OrdersTotal() - 1; i >= 0; i--)
+      {
+         if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderType() == OP_SELL)
+         {
+            OrderClose(OrderTicket(), OrderLots(), Ask, 0, clrGreen);
+            isSellOrder = false;
+            break;
+         }
+      }
+   }
+}
